@@ -1,6 +1,9 @@
 # MonstersMap
 
 A Dalamud plugin for Final Fantasy XIV that helps you locate and track monsters across Eorzea.
+[FFXIVLauncher](https://github.com/goatcorp/FFXIVQuickLauncher).
+
+To install it, you can follow this: [my repo](https://github.com/FeriusDMS/MyDalamudPlugins).
 
 ## Features
 
@@ -9,13 +12,6 @@ A Dalamud plugin for Final Fantasy XIV that helps you locate and track monsters 
 - **Distance Calculation**: See how far each monster is from your position
 - **Mini-map Integration**: Monster locations appear on your mini-map
 - **100% Client-Side**: All operations are performed locally - no server communication
-
-## Installation
-
-1. Add this plugin to your Dalamud plugin repository
-2. Use `/xlplugins` to open the plugin installer
-3. Search for "MonstersMap" and install
-4. Reload your UI or restart FFXIV
 
 ## Usage
 
@@ -34,15 +30,6 @@ Type `/monsters` in the chat to open the monster search window
 4. Select a monster from the list
 5. Click "Flag Location" to mark it on your map
 
-## Safety
-
-This plugin:
-- ✅ Only reads client-side data (ObjectTable)
-- ✅ Does NOT communicate with any servers
-- ✅ Does NOT modify game files
-- ✅ Does NOT interact with server state
-- ✅ Fully compliant with Dalamud plugin guidelines
-
 ## Technical Details
 
 - Built with **Dalamud API 15**
@@ -59,7 +46,3 @@ This plugin:
 ## License
 
 See LICENSE file for details
-
-## Author
-
-Andrea
