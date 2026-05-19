@@ -1,0 +1,9 @@
+{
+  "$schema": "https://raw.githubusercontent.com/DotNetAnalyzers/StyleCopAnalyzers/master/StyleCop.Analyzers/StyleCop.Analyzers.ruleset",
+  "rules": {
+    "SA1600": { "action": "none", "severity": "none" },
+    "SA1601": { "action": "none", "severity": "none" },
+    "SX1101": { "action": "none", "severity": "none" },
+    "SA1633": { "action": "none", "severity": "none" }
+  }
+}
