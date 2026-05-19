@@ -1,0 +1,24 @@
+# Build results
+bin/
+obj/
+*.dll
+*.exe
+*.o
+*.so
+*.dylib
+
+# IDE files
+.vs/
+.vscode/
+*.swp
+*.swo
+*~
+*.user
+*.sln.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Dalamud specific
+*.pdb

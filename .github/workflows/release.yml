@@ -1,0 +1,94 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+env:
+  PUBLIC_NAME: MonstersMap
+  SOLUTION_NAME: MonstersMap
+  INTERNAL_NAME: MonstersMap
+  RELEASE_DIR: MonstersMap\bin\Release\win-x64\MonstersMap
+  PERSONAL_PLUGIN_REPO: Andrea/MyDalamudPlugins
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    if: ${{ contains(toJSON(github.event.commits.*.message), 'build:') || contains(toJSON(github.event.commits.*.message), 'build(')}}
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      - name: Extract Branch
+        id: extract_branch
+        run: |
+          $branch_name = 'master'
+          $commit_messages = @'
+          ${{ toJSON(github.event.commits) }}
+          '@
+          
+          $commit_messages = $commit_messages | ConvertFrom-Json
+          
+          foreach ($commit in $commit_messages) {
+              if ($commit.message -match 'build\(([^)]+)\):') {
+                  $branch_name = $matches[1]
+                  break
+              }
+          }
+
+          echo "branch_name=$branch_name" >> $env:GITHUB_OUTPUT
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v1.0.2
+
+      - name: Download Dalamud
+        run: |
+          $branch_name = '${{ steps.extract_branch.outputs.branch_name }}'
+
+          if ($branch_name -eq 'master') {
+            $url = 'https://goatcorp.github.io/dalamud-distrib/latest.zip'
+          } else {
+            $url = "https://goatcorp.github.io/dalamud-distrib/$branch_name/latest.zip"
+          }
+          
+          Invoke-WebRequest -Uri $url -OutFile latest.zip
+          Expand-Archive -Force latest.zip "$env:AppData\XIVLauncher\addon\Hooks\dev\"
+
+      - name: Build
+        working-directory: MonstersMap
+        run: |
+          dotnet restore -r win-x64 ${{ env.SOLUTION_NAME }}.csproj
+          dotnet build --configuration Release -r win-x64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PluginRepoZip
+          path: ${{ env.RELEASE_DIR }}
+          if-no-files-found: error
+
+  deploy:
+    needs: build
+    if: ${{ contains(toJSON(github.event.commits.*.message), 'build:') || contains(toJSON(github.event.commits.*.message), 'build(')}}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          repository: ${{ env.PERSONAL_PLUGIN_REPO }}
+          token: ${{ secrets.PAT }}
+
+      - uses: actions/download-artifact@v4.1.7
+        with:
+          name: PluginRepoZip
+          path: plugins/${{ env.INTERNAL_NAME }}
+
+      - uses: EndBug/add-and-commit@v7
+        with:
+          add: --all
+          author_name: GitHub Action
+          author_email: github-actions[bot]@users.noreply.github.com
+          message: Update ${{ env.INTERNAL_NAME }}
