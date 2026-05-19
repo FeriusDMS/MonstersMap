@@ -4,13 +4,13 @@
   <PropertyGroup>
     <AssemblyName>MonstersMap</AssemblyName>
 
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <Platforms>x64</Platforms>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
-    <Authors>Andrea</Authors>
+    <Authors>FeriusDMS</Authors>
     <Version>0.1.0</Version>
   </PropertyGroup>
 
