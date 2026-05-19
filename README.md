@@ -40,7 +40,7 @@ Type `/monsters` in the chat to open the monster search window
 ## Requirements
 
 - Dalamud (API 15+)
-- .NET 9.0
+- .NET 10.0
 - Windows 64-bit
 
 ## License
