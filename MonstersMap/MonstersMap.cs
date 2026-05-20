@@ -3,6 +3,7 @@ using Dalamud.Plugin.Services;
 using Dalamud.Interface.Windowing;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Objects;
+using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.IoC;
 using Dalamud.Game.Text.SeStringHandling;
@@ -105,7 +106,7 @@ public class MonstersMapWindow : Window {
             
             for (int i = 0; i < foundMonsters.Count; i++) {
                 var monster = foundMonsters[i];
-                var distance = Vector3.Distance(Plugin.ClientState.LocalPlayer?.Position ?? Vector3.Zero, monster.Position);
+                var distance = Vector3.Distance(Plugin.ObjectTable.LocalPlayer?.Position ?? Vector3.Zero, monster.Position);
                 
                 string label = $"{monster.Name} (Distance: {distance:F2}y)";
                 
@@ -168,12 +169,8 @@ public class MonstersMapWindow : Window {
                 
                 // Check if the object name matches (case-insensitive partial match)
                 if (name.Contains(monsterSearchInput, StringComparison.OrdinalIgnoreCase)) {
-                    // Filter for combat-related objects (enemies/monsters)
-                    if (obj is Character character) {
-                        // Don't include players
-                        if (character.IsPlayer) continue;
-                        
-                        // Check if it's a monster/NPC (non-player character)
+                    // Filter only battle NPCs (hostile mobs and similar combat entities)
+                    if (obj is IBattleNpc && obj.ObjectKind == ObjectKind.BattleNpc) {
                         foundMonsters.Add((name, obj.Position));
                         Plugin.Log.Information($"Found monster: {name} at {obj.Position}");
                     }
