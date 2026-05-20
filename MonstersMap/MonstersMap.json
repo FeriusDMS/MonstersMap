@@ -1,9 +1,9 @@
 {
-  "Author": "Andrea",
+  "Author": "FeriusDMS",
   "Name": "MonstersMap",
   "Punchline": "Search and locate monsters on the map with ease.",
   "Description": "Find any monster in Eorzea! Enter a monster name and get instantly flagged on the map with a minimap icon showing the location. Perfect for hunts, gathering, or exploration.",
-  "RepoUrl": "https://github.com/Andrea/MonstersMap",
+  "RepoUrl": "https://github.com/FeriusDMS/MonstersMap",
   "Changelog": "-0.1.0\n  Initial release\n  Search monsters by name\n  Place flags on map\n  Minimap integration",
   "Tags": [
     "Map",
