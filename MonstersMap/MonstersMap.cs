@@ -9,6 +9,7 @@ using Dalamud.IoC;
 using Dalamud.Game.Text.SeStringHandling;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 
 namespace MonstersMap;
@@ -158,33 +159,48 @@ public class MonstersMapWindow : Window {
 
         foundMonsters.Clear();
         selectedMonsterIndex = -1;
-        lastSearchedMonster = monsterSearchInput;
+        lastSearchedMonster = monsterSearchInput.Trim();
+
+        var searchTerms = NormalizeSearchText(lastSearchedMonster)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
         try {
-            // Search through all objects in the current zone
+            // Search through all currently spawned combat NPCs.
             foreach (var obj in Plugin.ObjectTable) {
                 if (obj == null) continue;
 
-                var name = obj.Name?.ToString() ?? string.Empty;
+                if (obj is not IBattleNpc || obj.ObjectKind != ObjectKind.BattleNpc) {
+                    continue;
+                }
+
+                var name = NormalizeSearchText(obj.Name?.TextValue ?? string.Empty);
                 
-                // Check if the object name matches (case-insensitive partial match)
-                if (name.Contains(monsterSearchInput, StringComparison.OrdinalIgnoreCase)) {
-                    // Filter only battle NPCs (hostile mobs and similar combat entities)
-                    if (obj is IBattleNpc && obj.ObjectKind == ObjectKind.BattleNpc) {
-                        foundMonsters.Add((name, obj.Position));
-                        Plugin.Log.Information($"Found monster: {name} at {obj.Position}");
-                    }
+                // Match each word from the search, which makes two-part names more reliable.
+                if (searchTerms.All(term => name.Contains(term, StringComparison.OrdinalIgnoreCase))) {
+                    foundMonsters.Add((obj.Name?.TextValue ?? string.Empty, obj.Position));
+                    Plugin.Log.Information($"Found monster: {obj.Name?.TextValue ?? string.Empty} at {obj.Position}");
                 }
             }
 
             if (foundMonsters.Count == 0) {
-                Plugin.Log.Warning($"No monsters found matching '{monsterSearchInput}'");
+                Plugin.Log.Warning($"No monsters found matching '{lastSearchedMonster}' among currently spawned monsters");
             } else {
-                Plugin.Log.Information($"Found {foundMonsters.Count} monster(s) matching '{monsterSearchInput}'");
+                Plugin.Log.Information($"Found {foundMonsters.Count} monster(s) matching '{lastSearchedMonster}'");
             }
         } catch (Exception ex) {
             Plugin.Log.Error($"Error searching for monster: {ex.Message}");
         }
+    }
+
+    private static string NormalizeSearchText(string text) {
+        return string.Join(
+            ' ',
+            text
+                .Trim()
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(part => part.Normalize(NormalizationForm.FormKC)));
     }
 
     private void PlaceFlag(string monsterName, Vector3 position) {
