@@ -136,7 +136,7 @@ public class MonstersMapWindow : Window {
                 }
             }
         } else if (!string.IsNullOrEmpty(lastSearchedMonster)) {
-            ImGui.TextWrapped($"No monsters found matching '{lastSearchedMonster}' in current area");
+            ImGui.TextWrapped($"No monsters found matching '{lastSearchedMonster}' among currently spawned monsters");
         }
 
         ImGui.Spacing();
@@ -161,27 +161,18 @@ public class MonstersMapWindow : Window {
         selectedMonsterIndex = -1;
         lastSearchedMonster = monsterSearchInput.Trim();
 
-        var searchTerms = NormalizeSearchText(lastSearchedMonster)
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
         try {
             // Search through all currently spawned combat NPCs.
-            foreach (var obj in Plugin.ObjectTable) {
-                if (obj == null) continue;
+            var candidates = Plugin.ObjectTable
+                .Where(obj => obj is IBattleNpc && obj.ObjectKind == ObjectKind.BattleNpc)
+                .Select(obj => new MonsterSearchCandidate(obj.Name?.TextValue ?? string.Empty, obj.Position))
+                .ToArray();
 
-                if (obj is not IBattleNpc || obj.ObjectKind != ObjectKind.BattleNpc) {
-                    continue;
-                }
+            var results = MonsterSearch.FindMatches(candidates, lastSearchedMonster);
 
-                var name = NormalizeSearchText(obj.Name?.TextValue ?? string.Empty);
-                
-                // Match each word from the search, which makes two-part names more reliable.
-                if (searchTerms.All(term => name.Contains(term, StringComparison.OrdinalIgnoreCase))) {
-                    foundMonsters.Add((obj.Name?.TextValue ?? string.Empty, obj.Position));
-                    Plugin.Log.Information($"Found monster: {obj.Name?.TextValue ?? string.Empty} at {obj.Position}");
-                }
+            foreach (var monster in results) {
+                foundMonsters.Add((monster.Name, monster.Position));
+                Plugin.Log.Information($"Found monster: {monster.Name} at {monster.Position}");
             }
 
             if (foundMonsters.Count == 0) {
@@ -192,15 +183,6 @@ public class MonstersMapWindow : Window {
         } catch (Exception ex) {
             Plugin.Log.Error($"Error searching for monster: {ex.Message}");
         }
-    }
-
-    private static string NormalizeSearchText(string text) {
-        return string.Join(
-            ' ',
-            text
-                .Trim()
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(part => part.Normalize(NormalizationForm.FormKC)));
     }
 
     private void PlaceFlag(string monsterName, Vector3 position) {
