@@ -5,6 +5,8 @@ on:
     branches:
       - DEV
   pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 env:
