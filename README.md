@@ -53,7 +53,7 @@ dotnet test MonstersMapTests/MonstersMap.Tests.csproj
 ## Technical Details
 
 - Built with **Dalamud API 15**
-- Uses Dalamud's ObjectTable for monster detection
+- Uses Dalamud game data for global monster lookup, plus ObjectTable for live spawns
 - Client-side coordinate conversion for map positioning
 - ImGui interface for user interaction
 
