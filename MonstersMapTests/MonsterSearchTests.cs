@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using MonstersMap;
 
@@ -53,7 +55,9 @@ public class MonsterSearchTests
         for (var index = 0; index < expectedNames.Length; index++)
         {
             Assert.Equal(expectedNames[index], results[index].Name);
-            Assert.Equal(candidates[index].Position, results[index].Position);
+            var expectedCandidate = candidates.Single(candidate =>
+                string.Equals(candidate.Name, expectedNames[index], StringComparison.Ordinal));
+            Assert.Equal(expectedCandidate.Position, results[index].Position);
         }
     }
 
