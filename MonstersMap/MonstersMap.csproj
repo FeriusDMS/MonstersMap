@@ -23,6 +23,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\MonstersMap.Core\MonstersMap.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Remove="stylecop.json" />
     <AdditionalFiles Include="..\stylecop.json">
       <Link>stylecop.json</Link>

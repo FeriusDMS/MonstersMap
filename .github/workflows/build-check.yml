@@ -43,10 +43,10 @@ jobs:
         shell: pwsh
         run: |
           dotnet restore -r win-x64 ${{ env.SOLUTION_NAME }}.csproj
-          dotnet restore -r win-x64 ..\MonstersMapTests\MonstersMap.Tests.csproj
+          dotnet restore ..\MonstersMapTests\MonstersMap.Tests.csproj
 
       - name: Test
         working-directory: MonstersMapTests
         shell: pwsh
         run: |
-          dotnet test --configuration Release -r win-x64 --no-restore
+          dotnet test --configuration Release --no-restore
