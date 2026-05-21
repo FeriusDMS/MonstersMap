@@ -1,5 +1,33 @@
 {
-  "version": 5,
-  "groups": [],
-  "rules": []
+  "version": 1,
+  "dependencies": {
+    "net10.0-windows7.0": {
+      "DalamudPackager": {
+        "type": "Direct",
+        "requested": "[15.0.0, )",
+        "resolved": "15.0.0",
+        "contentHash": "411vwC8/X8Z/sQ2TI6v3SvOn66xFPeOjFn3Zn+h0d3Ox2t1kFm66AhDvmx/qcMwVrR+Hidxj0dadpQ2dgyXMBQ=="
+      },
+      "DotNet.ReproducibleBuilds": {
+        "type": "Direct",
+        "requested": "[1.2.39, )",
+        "resolved": "1.2.39",
+        "contentHash": "fcFN01tDTIQqDuTwr1jUQK/geofiwjG5DycJQOnC72i1SsLAk1ELe+apBOuZ11UMQG8YKFZG1FgvjZPbqHyatg=="
+      },
+      "StyleCop.Analyzers": {
+        "type": "Direct",
+        "requested": "[1.2.0-beta.507, )",
+        "resolved": "1.2.0-beta.507",
+        "contentHash": "/FtugDT66cKJJ+GGH7rNpG6UDrT4iIWz45M6lrXXHobDUFDHw+q5VgkbiR+6ffTO564ge7w6fQh/eoQhVdJO8Q==",
+        "dependencies": {
+          "StyleCop.Analyzers.Unstable": "1.2.0.507"
+        }
+      },
+      "StyleCop.Analyzers.Unstable": {
+        "type": "Transitive",
+        "resolved": "1.2.0.507",
+        "contentHash": "gTY3IQdRqDJ4hbhSA3e/R48oE8b/OiKfvwkt1QdNVfrJK2gMHBV8ldaHJ885jxWZfllK66soa/sdcjh9bX49Tw=="
+      }
+    }
+  }
 }
