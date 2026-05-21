@@ -97,7 +97,7 @@ public class MonsterSearchTests
 
         Assert.Equal(2, results.Count);
         Assert.Equal("Wild Hog", results[0].Name);
-        Assert.Equal("Stormslime", results[1].Name);
+        Assert.Equal("Muu Shuwuu", results[1].Name);
     }
 
     [Fact]
