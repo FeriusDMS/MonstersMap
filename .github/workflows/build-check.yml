@@ -1,8 +1,11 @@
 name: Build and Test
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - dev
   pull_request:
+  workflow_dispatch:
 
 env:
   PUBLIC_NAME: MonstersMap
@@ -40,7 +43,7 @@ jobs:
         shell: pwsh
         run: |
           dotnet restore -r win-x64 ${{ env.SOLUTION_NAME }}.csproj
-          dotnet restore -r win-x64 ..\MonstersMapTests\MonstersMapTests.csproj
+          dotnet restore -r win-x64 ..\MonstersMapTests\MonstersMap.Tests.csproj
 
       - name: Test
         working-directory: MonstersMapTests

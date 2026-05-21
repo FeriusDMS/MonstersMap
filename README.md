@@ -47,7 +47,7 @@ That workflow downloads Dalamud on the runner, restores the plugin and test proj
 If you do have the .NET SDK installed, the equivalent local command is:
 
 ```bash
-dotnet test MonstersMapTests/MonstersMapTests.csproj
+dotnet test MonstersMapTests/MonstersMap.Tests.csproj
 ```
 
 ## Technical Details
