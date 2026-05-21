@@ -4,7 +4,7 @@
   "Punchline": "Search and locate monsters on the map with ease.",
   "Description": "Find any monster in Eorzea! Enter a monster name and get instantly flagged on the map with a minimap icon showing the location. Perfect for hunts, gathering, or exploration.",
   "RepoUrl": "https://github.com/FeriusDMS/MonstersMap",
-  "Changelog": "-0.1.1\n  Monster search now uses game data to find monsters across zones\n  Search results now include monsters even when they are not currently spawned nearby\n  Flagging now stores the monster's actual territory\n  Improved handling for cross-zone lookups",
+  "Changelog": "-0.1.1\n  Monster search now uses game data to find monsters across all zones\n  Search results now include monsters even when they are not currently spawned nearby\n  Flagging now stores the monster's actual territory\n  Improved handling for cross-zone lookups",
   "Tags": [
     "Map",
     "Utility",
