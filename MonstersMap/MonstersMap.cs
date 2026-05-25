@@ -1,3 +1,16 @@
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  MonstersMap.cs — version corrigée                                      ║
+// ║                                                                          ║
+// ║  Corrections majeures :                                                  ║
+// ║  1. Lecture correcte du sheet Level via l'API typée Lumina               ║
+// ║     (plus de réflexion fragile)                                          ║
+// ║  2. Résolution du BNpcName via RowRef<BNpcName>.Value.Singular           ║
+// ║  3. Langue du client passée à GetExcelSheet<T>(dataManager.Language)     ║
+// ║     → noms localisés (FR / EN / DE / JP)                                ║
+// ║  4. Filtre Type == 9 pour ne garder que les BattleNpc (monstres)         ║
+// ║  5. Flag placé via GameGui.OpenMapWithMapLink + vraie formule de conv.   ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Dalamud.Interface.Windowing;
@@ -6,17 +19,21 @@ using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.IoC;
-using Dalamud.Game.Text.SeStringHandling;
+using Dalamud.Game.Text.SeStringHandling.Payloads;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
 using Lumina.Excel.Sheets;
 
 namespace MonstersMap;
 
-public class Plugin : IDalamudPlugin {
+// ─────────────────────────────────────────────────────────────────────────────
+//  Plugin entry point
+// ─────────────────────────────────────────────────────────────────────────────
+
+public class Plugin : IDalamudPlugin
+{
     public string Name => "MonstersMap";
 
     [PluginService] public static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
@@ -27,477 +44,458 @@ public class Plugin : IDalamudPlugin {
     [PluginService] public static IGameGui GameGui { get; private set; } = null!;
     [PluginService] public static IClientState ClientState { get; private set; } = null!;
 
-    private readonly WindowSystem ws = new("MonstersMap");
-    private readonly MonstersMapWindow window = new();
-    public static FlaggedMonster? CurrentFlag { get; set; }
+    private readonly WindowSystem _ws = new("MonstersMap");
+    private readonly MonstersMapWindow _window;
 
-    public Plugin() {
-        try {
-            ws.AddWindow(window);
-            
-            CommandManager.AddHandler("/monsters", new Dalamud.Game.Command.CommandInfo(OnMonsterSearchCommand) {
-                HelpMessage = "Open the monster search window"
+    public Plugin()
+    {
+        try
+        {
+            _window = new MonstersMapWindow();
+            _ws.AddWindow(_window);
+
+            CommandManager.AddHandler("/monsters", new Dalamud.Game.Command.CommandInfo(OnCommand)
+            {
+                HelpMessage = "Open the monster search window (/monsters)"
             });
 
             PluginInterface.UiBuilder.Draw += Draw;
-            PluginInterface.UiBuilder.OpenMainUi += OnOpenMainUI;
-            Log.Information("MonstersMap plugin initialized successfully");
-        } catch (Exception ex) {
-            Log.Error($"Error initializing MonstersMap: {ex.Message}");
+            PluginInterface.UiBuilder.OpenMainUi += OpenMainUi;
+            Log.Information("[MonstersMap] Plugin initialized.");
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"[MonstersMap] Init error: {ex}");
+            throw;
         }
     }
 
-    private void OnOpenMainUI() {
-        window.IsOpen = true;
-    }
+    private void OpenMainUi() => _window.IsOpen = true;
+    private void OnCommand(string cmd, string args) => _window.IsOpen = !_window.IsOpen;
+    private void Draw() => _ws.Draw();
 
-    private void OnMonsterSearchCommand(string command, string args) {
-        window.IsOpen = !window.IsOpen;
-    }
-
-    private void Draw() {
-        ws.Draw();
-    }
-
-    public void Dispose() {
-        try {
-            ws.RemoveAllWindows();
-            PluginInterface.UiBuilder.Draw -= Draw;
-            PluginInterface.UiBuilder.OpenMainUi -= OnOpenMainUI;
-            CommandManager.RemoveHandler("/monsters");
-        } catch (Exception ex) {
-            Log.Error($"Error disposing MonstersMap: {ex.Message}");
-        }
+    public void Dispose()
+    {
+        _ws.RemoveAllWindows();
+        PluginInterface.UiBuilder.Draw -= Draw;
+        PluginInterface.UiBuilder.OpenMainUi -= OpenMainUi;
+        CommandManager.RemoveHandler("/monsters");
     }
 }
 
-public struct FlaggedMonster {
-    public string Name { get; set; }
-    public Vector3 Position { get; set; }
-    public uint CurrentZoneId { get; set; }
-}
-
-public class MonstersMapWindow : Window {
-    private string monsterSearchInput = string.Empty;
-    private string lastSearchedMonster = string.Empty;
-    private List<MonsterLocationResult> foundMonsters = new();
-    private int selectedMonsterIndex = -1;
-
-    public MonstersMapWindow() : base("Monster Search", ImGuiWindowFlags.AlwaysAutoResize) { }
-
-    public override void Draw() {
-        ImGui.Text("Search for a monster:");
-        ImGui.SetNextItemWidth(250);
-        
-        if (ImGui.InputText("##monsterInput", ref monsterSearchInput, 100, ImGuiInputTextFlags.EnterReturnsTrue)) {
-            SearchMonster();
-        }
-
-        ImGui.SameLine();
-        
-        if (ImGui.Button("Search##monsterSearch", new Vector2(80, 0))) {
-            SearchMonster();
-        }
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        // Display found monsters
-        if (foundMonsters.Count > 0) {
-            ImGui.Text($"Found {foundMonsters.Count} monster(s):");
-            ImGui.BeginChild("##monsterList", new Vector2(350, 150), true);
-            
-            for (int i = 0; i < foundMonsters.Count; i++) {
-                var monster = foundMonsters[i];
-                var label = FormatMonsterLabel(monster);
-                
-                if (ImGui.Selectable(label, selectedMonsterIndex == i)) {
-                    selectedMonsterIndex = i;
-                }
-            }
-            
-            ImGui.EndChild();
-
-            ImGui.Spacing();
-
-            if (selectedMonsterIndex >= 0 && selectedMonsterIndex < foundMonsters.Count) {
-                var selected = foundMonsters[selectedMonsterIndex];
-                ImGui.TextWrapped($"Selected: {selected.Name}");
-                ImGui.Text($"Zone: {selected.TerritoryName} ({selected.TerritoryType})");
-                ImGui.Text($"Position: X={selected.Position.X:F2} Y={selected.Position.Y:F2} Z={selected.Position.Z:F2}");
-
-                if (ImGui.Button("Flag Location", new Vector2(150, 0))) {
-                    PlaceFlag(selected);
-                }
-
-                ImGui.SameLine();
-
-                if (ImGui.Button("Clear Flag", new Vector2(150, 0))) {
-                    ClearFlag();
-                }
-            }
-        } else if (!string.IsNullOrEmpty(lastSearchedMonster)) {
-            ImGui.TextWrapped($"No monsters found matching '{lastSearchedMonster}'");
-        }
-
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.Spacing();
-
-        if (Plugin.CurrentFlag.HasValue) {
-            var flag = Plugin.CurrentFlag.Value;
-            ImGui.Text($"Current Flag: {flag.Name}");
-            ImGui.Text($"Zone: {flag.CurrentZoneId}");
-            ImGui.TextWrapped($"Position: X={flag.Position.X:F2} Y={flag.Position.Y:F2} Z={flag.Position.Z:F2}");
-        }
-    }
-
-    private void SearchMonster() {
-        if (string.IsNullOrWhiteSpace(monsterSearchInput)) {
-            Plugin.Log.Warning("Monster name is empty");
-            return;
-        }
-
-        foundMonsters.Clear();
-        selectedMonsterIndex = -1;
-        lastSearchedMonster = monsterSearchInput.Trim();
-
-        try {
-            var results = MonsterDiscovery.Search(
-                Plugin.DataManager,
-                Plugin.ObjectTable,
-                Plugin.ClientState.TerritoryType,
-                lastSearchedMonster);
-
-            foundMonsters.AddRange(results);
-
-            foreach (var monster in results) {
-                Plugin.Log.Information($"Found monster: {monster.Name} in {monster.TerritoryName} at {monster.Position}");
-            }
-
-            if (foundMonsters.Count == 0) {
-                Plugin.Log.Warning($"No monsters found matching '{lastSearchedMonster}'");
-            } else {
-                Plugin.Log.Information($"Found {foundMonsters.Count} monster(s) matching '{lastSearchedMonster}'");
-            }
-        } catch (Exception ex) {
-            Plugin.Log.Error($"Error searching for monster: {ex.Message}");
-        }
-    }
-
-    private void PlaceFlag(MonsterLocationResult monster) {
-        try {
-            // Store the flag information (this is CLIENT-SIDE ONLY)
-            Plugin.CurrentFlag = new FlaggedMonster {
-                Name = monster.Name,
-                Position = monster.Position,
-                CurrentZoneId = monster.TerritoryType
-            };
-
-            Plugin.Log.Information($"Flag stored for {monster.Name} in territory {monster.TerritoryType} at {monster.Position}");
-
-            // Try to place a waymark on the map using ImGui (client-side)
-            // The flag will be visible in the map overlay
-            var mapCoordinates = ConvertWorldToMapCoordinates(monster.Position);
-            Plugin.Log.Information($"Map coordinates: X={mapCoordinates.X:F2} Y={mapCoordinates.Y:F2}");
-        } catch (Exception ex) {
-            Plugin.Log.Error($"Error placing flag: {ex.Message}");
-        }
-    }
-
-    private void ClearFlag() {
-        Plugin.CurrentFlag = null;
-        foundMonsters.Clear();
-        selectedMonsterIndex = -1;
-        Plugin.Log.Information("Flag cleared");
-    }
-
-    /// <summary>
-    /// Converts world coordinates to map coordinates
-    /// This is used for displaying positions on the map UI
-    /// </summary>
-    private Vector2 ConvertWorldToMapCoordinates(Vector3 worldPosition) {
-        // FFXIV map coordinate conversion (client-side calculation)
-        // Each zone has different scale factors
-        const float scale = 50.0f; // Default scale
-        
-        var mapX = (worldPosition.X - 0) / scale;
-        var mapY = (worldPosition.Z - 0) / scale;
-        
-        return new Vector2(mapX, mapY);
-    }
-
-    private string FormatMonsterLabel(MonsterLocationResult monster) {
-        if (monster.TerritoryType == Plugin.ClientState.TerritoryType) {
-            var playerPosition = Plugin.ObjectTable.LocalPlayer?.Position ?? Vector3.Zero;
-            var distance = Vector3.Distance(playerPosition, monster.Position);
-            return $"{monster.Name} - {distance:F2}y";
-        }
-
-        return $"{monster.Name} - {monster.TerritoryName}";
-    }
-}
+// ─────────────────────────────────────────────────────────────────────────────
+//  Data record
+// ─────────────────────────────────────────────────────────────────────────────
 
 public sealed record MonsterLocationResult(
     string Name,
     Vector3 Position,
     uint TerritoryType,
-    string TerritoryName);
+    string TerritoryName,
+    uint MapId);
 
-internal sealed record MonsterLocationCandidate(
-    string Name,
-    Vector3 Position,
-    uint TerritoryType,
-    string TerritoryName)
+// ─────────────────────────────────────────────────────────────────────────────
+//  Monster discovery — lecture correcte des sheets Lumina
+// ─────────────────────────────────────────────────────────────────────────────
+
+internal static class MonsterDiscovery
 {
-    public MonsterSearchCandidate SearchCandidate => new(this.Name, this.Position);
-}
+    private static Dalamud.ClientLanguage? _cachedLang;
+    private static List<MonsterLocationResult>? _globalCache;
+    private static readonly object Lock = new();
 
-internal static class MonsterDiscovery {
-    private static IReadOnlyList<MonsterLocationCandidate>? cachedGlobalCandidates;
-    private static readonly object cacheLock = new();
-
+    /// <summary>
+    /// Retourne tous les monstres dont le nom contient <paramref name="query"/>
+    /// (insensible à la casse), en fusionnant les données statiques (Level sheet)
+    /// et les monstres actuellement spawné dans la zone du joueur.
+    /// </summary>
     public static IReadOnlyList<MonsterLocationResult> Search(
         IDataManager dataManager,
         IObjectTable objectTable,
         uint currentTerritoryType,
-        string searchText) {
-        var candidates = GetCandidates(dataManager, objectTable, currentTerritoryType);
-        if (candidates.Count == 0) {
+        string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
             return Array.Empty<MonsterLocationResult>();
-        }
 
-        var searchCandidates = candidates.Select(candidate => candidate.SearchCandidate).ToArray();
-        var results = MonsterSearch.FindMatches(searchCandidates, searchText);
-        var matchedResults = new List<MonsterLocationResult>(results.Count);
+        // 1. Monstres spawné en live (position exacte, temps réel)
+        var live = GetLiveMonsters(objectTable, dataManager, currentTerritoryType);
 
-        foreach (var result in results) {
-            for (var index = 0; index < candidates.Count; index++) {
-                var candidate = candidates[index];
-                if (!string.Equals(candidate.Name, result.Name, StringComparison.Ordinal) || candidate.Position != result.Position) {
-                    continue;
-                }
+        // 2. Base globale depuis les sheets de données du jeu
+        var global = GetGlobalCache(dataManager);
 
-                matchedResults.Add(new MonsterLocationResult(
-                    candidate.Name,
-                    candidate.Position,
-                    candidate.TerritoryType,
-                    candidate.TerritoryName));
-                break;
-            }
-        }
-
-        return matchedResults;
+        // 3. Fusion + filtre par nom
+        var needle = query.Trim();
+        return live
+            .Concat(global)
+            .Where(r => r.Name.Contains(needle, StringComparison.OrdinalIgnoreCase))
+            .DistinctBy(r => (r.Name, r.TerritoryType))
+            .OrderBy(r => r.Name)
+            .ToList();
     }
 
-    private static IReadOnlyList<MonsterLocationCandidate> GetCandidates(
-        IDataManager dataManager,
+    // ── Cache global ─────────────────────────────────────────────────────────
+
+    private static List<MonsterLocationResult> GetGlobalCache(IDataManager dataManager)
+    {
+        lock (Lock)
+        {
+            // Invalide si la langue du client a changé (changement de langue en cours de jeu)
+            if (_globalCache is not null && _cachedLang == dataManager.Language)
+                return _globalCache;
+
+            _cachedLang = dataManager.Language;
+            _globalCache = BuildGlobalCache(dataManager);
+            return _globalCache;
+        }
+    }
+
+    /// <summary>
+    /// Parcourt le sheet <c>Level</c> de Lumina pour extraire tous les BattleNpc
+    /// (Type == 9) avec leur nom localisé, position et territoire.
+    ///
+    /// Pourquoi ça ne fonctionnait pas avant :
+    ///  - L'ancien code utilisait la réflexion (GetPropertyValue / ExtractDisplayText)
+    ///    pour tenter de lire "BNpcName", "Name", etc. sur le row. Or dans l'API
+    ///    Lumina moderne, BNpcName est un <c>RowRef&lt;BNpcName&gt;</c> : une référence
+    ///    paresseuse vers une autre sheet. La réflexion retournait l'objet RowRef brut,
+    ///    jamais le texte réel — d'où 0 résultat.
+    ///  - L'ancien code utilisait <c>dataManager.GameData.GetExcelSheet&lt;Level&gt;()</c>
+    ///    sans langue → noms en japonais ou vides selon la config Lumina.
+    ///  - Aucun filtre sur Type → on parcourait tout l'univers (décors, objets…).
+    /// </summary>
+    private static List<MonsterLocationResult> BuildGlobalCache(IDataManager dataManager)
+    {
+        Plugin.Log.Information($"[MonstersMap] Building global cache (language={dataManager.Language})…");
+
+        // ✅ Utiliser dataManager.GetExcelSheet<T>(language) et non dataManager.GameData.GetExcelSheet<T>()
+        //    La version Dalamud (IDataManager) gère correctement la langue et le contexte du plugin.
+        var levelSheet = dataManager.GetExcelSheet<Level>(dataManager.Language);
+
+        if (levelSheet is null)
+        {
+            Plugin.Log.Error("[MonstersMap] Level sheet could not be loaded!");
+            return new List<MonsterLocationResult>();
+        }
+
+        var results = new List<MonsterLocationResult>();
+        var seen = new HashSet<(uint BNpcNameId, uint TerritoryId)>();
+
+        foreach (var row in levelSheet)
+        {
+            // ✅ Filtre : Type == 9 = BattleNpc uniquement
+            //    Type 8 = EventNpc (marchands, PNJ de quête…)
+            //    Sans ce filtre on récupère des milliers d'objets de décor sans nom.
+            if (row.Type != 9)
+                continue;
+
+            // ✅ Résolution correcte : BNpcName est un RowRef<BNpcName>
+            //    .IsValid vérifie que la référence pointe vers une ligne existante
+            //    .Value donne la ligne BNpcName
+            //    .Singular est le SeString du nom → .ExtractText() donne le string localisé
+            if (!row.BNpcName.IsValid)
+                continue;
+
+            var bNpcNameRow = row.BNpcName.Value;
+            if (bNpcNameRow.RowId == 0)
+                continue;   // Ligne vide (row 0 = "")
+
+            var name = bNpcNameRow.Singular.ExtractText();
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            // Territoire
+            if (!row.Territory.IsValid)
+                continue;
+
+            var terrRow = row.Territory.Value;
+            uint territoryId = terrRow.RowId;
+            if (territoryId == 0)
+                continue;
+
+            // Dédoublonnage par (BNpcNameId, TerritoryId) pour avoir un seul résultat
+            // par type de monstre par zone (pas besoin de lister 50× le même gobelin)
+            var key = (bNpcNameRow.RowId, territoryId);
+            if (!seen.Add(key))
+                continue;
+
+            // Nom de la zone
+            string territoryName = "Unknown";
+            if (terrRow.PlaceName.IsValid)
+            {
+                var n = terrRow.PlaceName.Value.Name.ExtractText();
+                if (!string.IsNullOrWhiteSpace(n))
+                    territoryName = n;
+            }
+
+            // Map ID (nécessaire pour OpenMapWithMapLink)
+            uint mapId = terrRow.Map.IsValid ? terrRow.Map.Value.RowId : 0;
+
+            // Position monde
+            var position = new Vector3(row.X, row.Y, row.Z);
+
+            results.Add(new MonsterLocationResult(name, position, territoryId, territoryName, mapId));
+        }
+
+        Plugin.Log.Information($"[MonstersMap] Global cache: {results.Count} unique entries.");
+        return results;
+    }
+
+    // ── Monstres en vie dans la zone actuelle ────────────────────────────────
+
+    private static IEnumerable<MonsterLocationResult> GetLiveMonsters(
         IObjectTable objectTable,
-        uint currentTerritoryType) {
-        var currentTerritoryName = ResolveTerritoryName(dataManager, currentTerritoryType);
+        IDataManager dataManager,
+        uint currentTerritoryType)
+    {
+        var territoryName = ResolveTerritoryName(dataManager, currentTerritoryType);
+        var mapId = ResolveMapId(dataManager, currentTerritoryType);
 
-        var currentSpawnCandidates = objectTable
+        return objectTable
             .Where(obj => obj is IBattleNpc && obj.ObjectKind == ObjectKind.BattleNpc)
-            .Select(obj => new MonsterLocationCandidate(
-                obj.Name?.TextValue ?? string.Empty,
-                obj.Position,
-                currentTerritoryType,
-                currentTerritoryName))
-            .Where(candidate => !string.IsNullOrWhiteSpace(candidate.Name));
-
-        var globalCandidates = GetGlobalCandidates(dataManager);
-
-        return globalCandidates
-            .Concat(currentSpawnCandidates)
-            .DistinctBy(candidate => (candidate.Name, candidate.Position, candidate.TerritoryType))
-            .ToArray();
+            .Select(obj =>
+            {
+                var name = obj.Name?.TextValue ?? string.Empty;
+                return new MonsterLocationResult(name, obj.Position, currentTerritoryType, territoryName, mapId);
+            })
+            .Where(r => !string.IsNullOrWhiteSpace(r.Name));
     }
 
-    private static IReadOnlyList<MonsterLocationCandidate> GetGlobalCandidates(IDataManager dataManager) {
-        lock (cacheLock) {
-            if (cachedGlobalCandidates is not null) {
-                return cachedGlobalCandidates;
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private static string ResolveTerritoryName(IDataManager dataManager, uint territoryId)
+    {
+        var sheet = dataManager.GetExcelSheet<TerritoryType>(dataManager.Language);
+        if (sheet is null || !sheet.TryGetRow(territoryId, out var row))
+            return $"Zone {territoryId}";
+
+        if (row.PlaceName.IsValid)
+        {
+            var name = row.PlaceName.Value.Name.ExtractText();
+            if (!string.IsNullOrWhiteSpace(name))
+                return name;
+        }
+
+        return $"Zone {territoryId}";
+    }
+
+    private static uint ResolveMapId(IDataManager dataManager, uint territoryId)
+    {
+        var sheet = dataManager.GetExcelSheet<TerritoryType>();
+        if (sheet is null || !sheet.TryGetRow(territoryId, out var row))
+            return 0;
+
+        return row.Map.IsValid ? row.Map.Value.RowId : 0;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  UI — fenêtre ImGui
+// ─────────────────────────────────────────────────────────────────────────────
+
+public class MonstersMapWindow : Window
+{
+    private string _input = string.Empty;
+    private string _lastQuery = string.Empty;
+    private List<MonsterLocationResult> _results = new();
+    private int _selected = -1;
+    private string _status = string.Empty;
+
+    public MonstersMapWindow()
+        : base("Monster Search##MonstersMapWin", ImGuiWindowFlags.AlwaysAutoResize) { }
+
+    public override void Draw()
+    {
+        ImGui.Text("Search for a monster:");
+        ImGui.SetNextItemWidth(250);
+
+        if (ImGui.InputText("##input", ref _input, 100, ImGuiInputTextFlags.EnterReturnsTrue))
+            Search();
+
+        ImGui.SameLine();
+
+        if (ImGui.Button("Search##go", new Vector2(80, 0)))
+            Search();
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        // ── Résultats ──────────────────────────────────────────────────────
+        if (_results.Count > 0)
+        {
+            ImGui.Text($"Found {_results.Count} result(s) matching '{_lastQuery}':");
+            ImGui.BeginChild("##list", new Vector2(390, 160), true);
+
+            for (int i = 0; i < _results.Count; i++)
+            {
+                var m = _results[i];
+                var label = MakeLabel(m, i);
+
+                if (ImGui.Selectable(label, _selected == i))
+                    _selected = i;
             }
 
-            var sheet = dataManager.GameData.GetExcelSheet<Level>();
-            if (sheet is null) {
-                cachedGlobalCandidates = Array.Empty<MonsterLocationCandidate>();
-                return cachedGlobalCandidates;
+            ImGui.EndChild();
+            ImGui.Spacing();
+
+            if (_selected >= 0 && _selected < _results.Count)
+            {
+                var sel = _results[_selected];
+                ImGui.TextWrapped($"Name: {sel.Name}");
+                ImGui.Text($"Zone: {sel.TerritoryName}  (id={sel.TerritoryType})");
+                ImGui.Text($"Position: X={sel.Position.X:F1}  Y={sel.Position.Y:F1}  Z={sel.Position.Z:F1}");
+                ImGui.Spacing();
+
+                if (ImGui.Button("Flag on Map##flag", new Vector2(160, 0)))
+                    PlaceFlag(sel);
+
+                ImGui.SameLine();
+
+                if (ImGui.Button("Clear##clr", new Vector2(80, 0)))
+                    Reset();
+            }
+        }
+        else if (!string.IsNullOrEmpty(_lastQuery))
+        {
+            ImGui.TextWrapped($"No monsters found matching '{_lastQuery}'");
+        }
+
+        if (!string.IsNullOrEmpty(_status))
+        {
+            ImGui.Spacing();
+            ImGui.Separator();
+            ImGui.Spacing();
+            ImGui.TextWrapped(_status);
+        }
+    }
+
+    // ── Search ───────────────────────────────────────────────────────────────
+
+    private void Search()
+    {
+        _results.Clear();
+        _selected = -1;
+        _status = string.Empty;
+        _lastQuery = _input.Trim();
+
+        if (string.IsNullOrWhiteSpace(_lastQuery))
+            return;
+
+        try
+        {
+            var found = MonsterDiscovery.Search(
+                Plugin.DataManager,
+                Plugin.ObjectTable,
+                Plugin.ClientState.TerritoryType,
+                _lastQuery);
+
+            _results.AddRange(found);
+            Plugin.Log.Information($"[MonstersMap] '{_lastQuery}' → {_results.Count} result(s)");
+
+            if (_results.Count == 0)
+                Plugin.Log.Warning($"[MonstersMap] No results for '{_lastQuery}'");
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Error($"[MonstersMap] Search error: {ex}");
+            _status = $"Search error: {ex.Message}";
+        }
+    }
+
+    // ── Flag ─────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Ouvre la carte et place un marqueur via l'API officielle Dalamud
+    /// <see cref="IGameGui.OpenMapWithMapLink"/>.
+    ///
+    /// MapLinkPayload attend des coordonnées carte (typ. 1–42), pas des
+    /// coordonnées monde. On utilise la formule reverse-engineered par la
+    /// communauté FFXIV (SizeFactor + Offset du sheet Map).
+    /// </summary>
+    private void PlaceFlag(MonsterLocationResult m)
+    {
+        try
+        {
+            if (m.MapId == 0)
+            {
+                _status = "Cannot flag: Map ID is unknown for this monster.";
+                Plugin.Log.Warning($"[MonstersMap] MapId=0 for {m.Name} in territory {m.TerritoryType}");
+                return;
             }
 
-            var candidates = new List<MonsterLocationCandidate>();
+            var (mapX, mapY) = WorldToMapCoords(m.Position, m.MapId);
 
-            foreach (var levelRow in sheet) {
-                if (!levelRow.Map.IsValid) {
-                    continue;
-                }
+            Plugin.Log.Information(
+                $"[MonstersMap] Flag → {m.Name} | territory={m.TerritoryType} map={m.MapId} " +
+                $"| world({m.Position.X:F1},{m.Position.Z:F1}) → map({mapX:F2},{mapY:F2})");
 
-                var rowObject = (object)levelRow;
+            // ✅ OpenMapWithMapLink ouvre la carte au bon endroit et place le flag
+            Plugin.GameGui.OpenMapWithMapLink(new MapLinkPayload(
+                m.TerritoryType,
+                m.MapId,
+                mapX,
+                mapY));
 
-                if (!TryGetMonsterName(rowObject, out var monsterName)) {
-                    continue;
-                }
-
-                if (!TryGetPosition(rowObject, out var position)) {
-                    continue;
-                }
-
-                if (!TryGetTerritoryType(rowObject, out var territoryType)) {
-                    continue;
-                }
-
-                var territoryName = ResolveTerritoryName(dataManager, territoryType);
-                candidates.Add(new MonsterLocationCandidate(monsterName, position, territoryType, territoryName));
-            }
-
-            cachedGlobalCandidates = candidates;
-            return cachedGlobalCandidates;
+            _status = $"✓ Flag placed: {m.Name} in {m.TerritoryName} ({mapX:F1}, {mapY:F1})";
+        }
+        catch (Exception ex)
+        {
+            Plugin.Log.Error($"[MonstersMap] PlaceFlag error: {ex}");
+            _status = $"Flag error: {ex.Message}";
         }
     }
 
-    private static string ResolveTerritoryName(IDataManager dataManager, uint territoryType) {
-        var sheet = dataManager.GameData.GetExcelSheet<TerritoryType>();
-        if (sheet is null || !sheet.TryGetRow(territoryType, out var territoryRow)) {
-            return $"Territory {territoryType}";
-        }
+    /// <summary>
+    /// Convertit les coordonnées monde FFXIV en coordonnées carte affichées
+    /// dans l'UI du jeu.
+    ///
+    /// Formule standard (reverse-engineered) :
+    ///   mapCoord = ((worldCoord + offset) * 0.02 * sizeFactor) / 100 + 1
+    ///
+    /// SizeFactor et Offset viennent du sheet <c>Map</c> de Lumina.
+    /// L'axe Z du monde correspond à l'axe Y de la carte.
+    /// </summary>
+    private static (float X, float Y) WorldToMapCoords(Vector3 worldPos, uint mapId)
+    {
+        var mapSheet = Plugin.DataManager.GetExcelSheet<Map>();
+        if (mapSheet is not null && mapSheet.TryGetRow(mapId, out var mapRow))
+        {
+            var sf = mapRow.SizeFactor;
+            var ox = mapRow.OffsetX;
+            var oy = mapRow.OffsetY;
 
-        var placeName = GetPropertyValue(territoryRow, "PlaceName", "PlaceNameZone", "PlaceNameRegion");
-        var displayText = ExtractDisplayText(placeName);
-        return string.IsNullOrWhiteSpace(displayText) ? $"Territory {territoryType}" : displayText;
-    }
-
-    private static bool TryGetMonsterName(object row, out string monsterName) {
-        var rawName = GetPropertyValue(row, "BNpcName", "BNpcBase", "Name", "Resident", "MonsterName");
-        monsterName = ExtractDisplayText(rawName) ?? string.Empty;
-        return !string.IsNullOrWhiteSpace(monsterName);
-    }
-
-    private static bool TryGetPosition(object row, out Vector3 position) {
-        if (TryGetFloatProperty(row, out var x, "X", "PosX", "XPos") &&
-            TryGetFloatProperty(row, out var y, "Y", "PosY", "YPos") &&
-            TryGetFloatProperty(row, out var z, "Z", "PosZ", "ZPos")) {
-            position = new Vector3(x, y, z);
-            return true;
-        }
-
-        position = Vector3.Zero;
-        return false;
-    }
-
-    private static bool TryGetTerritoryType(object row, out uint territoryType) {
-        var rawTerritory = GetPropertyValue(row, "TerritoryType", "Territory", "TerritoryTypeId");
-        if (TryGetUInt32(rawTerritory, out territoryType)) {
-            return true;
-        }
-
-        territoryType = 0;
-        return false;
-    }
-
-    private static bool TryGetFloatProperty(object source, out float value, params string[] propertyNames) {
-        var rawValue = GetPropertyValue(source, propertyNames);
-        if (rawValue is null) {
-            value = 0;
-            return false;
-        }
-
-        try {
-            value = Convert.ToSingle(rawValue);
-            return true;
-        } catch {
-            value = 0;
-            return false;
-        }
-    }
-
-    private static bool TryGetUInt32(object? rawValue, out uint value) {
-        if (rawValue is null) {
-            value = 0;
-            return false;
-        }
-
-        var extracted = ExtractDisplayText(rawValue);
-        if (rawValue is uint directValue) {
-            value = directValue;
-            return true;
-        }
-
-        if (rawValue is int intValue && intValue >= 0) {
-            value = (uint)intValue;
-            return true;
-        }
-
-        if (rawValue is long longValue && longValue >= 0) {
-            value = (uint)longValue;
-            return true;
-        }
-
-        var rowIdProperty = rawValue.GetType().GetProperty("RowId", BindingFlags.Instance | BindingFlags.Public);
-        if (rowIdProperty?.GetValue(rawValue) is uint rowId) {
-            value = rowId;
-            return true;
-        }
-
-        if (uint.TryParse(extracted, out value)) {
-            return true;
-        }
-
-        value = 0;
-        return false;
-    }
-
-    private static object? GetPropertyValue(object source, params string[] propertyNames) {
-        var type = source.GetType();
-        foreach (var propertyName in propertyNames) {
-            var property = type.GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
-            if (property is null) {
-                continue;
-            }
-
-            var value = property.GetValue(source);
-            if (value is not null) {
-                return value;
+            if (sf > 0)
+            {
+                float x = ((worldPos.X + ox) * 0.02f * sf) / 100f + 1f;
+                float y = ((worldPos.Z + oy) * 0.02f * sf) / 100f + 1f;
+                return (x, y);
             }
         }
 
-        return null;
+        // Fallback grossier si Map sheet inaccessible
+        return (worldPos.X / 50f + 21f, worldPos.Z / 50f + 21f);
     }
 
-    private static string? ExtractDisplayText(object? value) {
-        if (value is null) {
-            return null;
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private string MakeLabel(MonsterLocationResult m, int idx)
+    {
+        if (m.TerritoryType == Plugin.ClientState.TerritoryType)
+        {
+            var playerPos = Plugin.ObjectTable.LocalPlayer?.Position ?? Vector3.Zero;
+            float dist = Vector3.Distance(playerPos, m.Position);
+            return $"{m.Name}  [{dist:F0}y — current zone]##{idx}";
         }
 
-        if (value is string text) {
-            return text;
-        }
+        return $"{m.Name}  [{m.TerritoryName}]##{idx}";
+    }
 
-        var type = value.GetType();
-
-        var extractTextMethod = type.GetMethod("ExtractText", BindingFlags.Instance | BindingFlags.Public, Type.EmptyTypes);
-        if (extractTextMethod?.ReturnType == typeof(string)) {
-            return extractTextMethod.Invoke(value, null) as string;
-        }
-
-        foreach (var propertyName in new[] { "TextValue", "Name", "Singular", "Value", "DisplayText" }) {
-            var property = type.GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
-            if (property is null) {
-                continue;
-            }
-
-            var propertyValue = property.GetValue(value);
-            var extracted = ExtractDisplayText(propertyValue);
-            if (!string.IsNullOrWhiteSpace(extracted)) {
-                return extracted;
-            }
-        }
-
-        var valueNullableProperty = type.GetProperty("ValueNullable", BindingFlags.Instance | BindingFlags.Public);
-        if (valueNullableProperty is not null) {
-            return ExtractDisplayText(valueNullableProperty.GetValue(value));
-        }
-
-        return value.ToString();
+    private void Reset()
+    {
+        _results.Clear();
+        _selected = -1;
+        _lastQuery = string.Empty;
+        _status = string.Empty;
     }
 }
