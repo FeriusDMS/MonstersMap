@@ -15,7 +15,6 @@ using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Dalamud.Interface.Windowing;
 using Dalamud.Bindings.ImGui;
-using Dalamud.Common;
 using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.Types;
@@ -101,7 +100,7 @@ public sealed record MonsterLocationResult(
 
 internal static class MonsterDiscovery
 {
-    private static ClientLanguage? _cachedLang;
+    private static string? _cachedLang;
     private static List<MonsterLocationResult>? _globalCache;
     private static readonly object Lock = new();
 
@@ -141,11 +140,13 @@ internal static class MonsterDiscovery
     {
         lock (Lock)
         {
+            var currentLanguage = dataManager.Language.ToString();
+
             // Invalide si la langue du client a changé (changement de langue en cours de jeu)
-            if (_globalCache is not null && _cachedLang == dataManager.Language)
+            if (_globalCache is not null && _cachedLang == currentLanguage)
                 return _globalCache;
 
-            _cachedLang = dataManager.Language;
+            _cachedLang = currentLanguage;
             _globalCache = BuildGlobalCache(dataManager);
             return _globalCache;
         }

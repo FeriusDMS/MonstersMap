@@ -47,6 +47,12 @@ jobs:
           dotnet restore -r win-x64 ${{ env.SOLUTION_NAME }}.csproj
           dotnet restore ..\MonstersMapTests\MonstersMap.Tests.csproj
 
+      - name: Build Plugin (Release)
+        working-directory: MonstersMap
+        shell: pwsh
+        run: |
+          dotnet build ${{ env.SOLUTION_NAME }}.csproj --configuration Release -r win-x64 --no-restore
+
       - name: Test
         working-directory: MonstersMapTests
         shell: pwsh
