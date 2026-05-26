@@ -15,6 +15,7 @@ using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Dalamud.Interface.Windowing;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Common;
 using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.Types;
@@ -100,7 +101,7 @@ public sealed record MonsterLocationResult(
 
 internal static class MonsterDiscovery
 {
-    private static Dalamud.ClientLanguage? _cachedLang;
+    private static ClientLanguage? _cachedLang;
     private static List<MonsterLocationResult>? _globalCache;
     private static readonly object Lock = new();
 
