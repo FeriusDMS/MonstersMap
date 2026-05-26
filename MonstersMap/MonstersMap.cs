@@ -191,19 +191,7 @@ internal static class MonsterDiscovery
             if (row.Type != 9)
                 continue;
 
-            // ✅ Résolution correcte : BNpcName est un RowRef<BNpcName>
-            //    .IsValid vérifie que la référence pointe vers une ligne existante
-            //    .Value donne la ligne BNpcName
-            //    .Singular est le SeString du nom → .ExtractText() donne le string localisé
-            if (!row.BNpcName.IsValid)
-                continue;
-
-            var bNpcNameRow = row.BNpcName.Value;
-            if (bNpcNameRow.RowId == 0)
-                continue;   // Ligne vide (row 0 = "")
-
-            var name = bNpcNameRow.Singular.ExtractText();
-            if (string.IsNullOrWhiteSpace(name))
+            if (!TryResolveBattleNpcName(row, out var bNpcNameId, out var name))
                 continue;
 
             // Territoire
@@ -217,7 +205,7 @@ internal static class MonsterDiscovery
 
             // Dédoublonnage par (BNpcNameId, TerritoryId) pour avoir un seul résultat
             // par type de monstre par zone (pas besoin de lister 50× le même gobelin)
-            var key = (bNpcNameRow.RowId, territoryId);
+            var key = (bNpcNameId, territoryId);
             if (!seen.Add(key))
                 continue;
 
@@ -288,6 +276,88 @@ internal static class MonsterDiscovery
             return 0;
 
         return row.Map.IsValid ? row.Map.Value.RowId : 0;
+    }
+
+    private static bool TryResolveBattleNpcName(Level row, out uint bNpcNameId, out string name)
+    {
+        // Lumina-generated property names can vary by game data/API generation.
+        // Try known candidates in order.
+        var reference = GetPropertyValue(row, "BNpcName")
+            ?? GetPropertyValue(row, "BNpcBase")
+            ?? GetPropertyValue(row, "Object");
+
+        return TryResolveNameFromReference(reference, out bNpcNameId, out name);
+    }
+
+    private static bool TryResolveNameFromReference(object? reference, out uint rowId, out string name)
+    {
+        rowId = 0;
+        name = string.Empty;
+
+        if (reference is null)
+            return false;
+
+        var isValid = GetBoolProperty(reference, "IsValid");
+        if (isValid.HasValue && !isValid.Value)
+            return false;
+
+        var value = GetPropertyValue(reference, "Value") ?? reference;
+
+        var id = GetUIntProperty(value, "RowId");
+        if (id == 0)
+            return false;
+
+        var textSource = GetPropertyValue(value, "Singular")
+            ?? GetPropertyValue(value, "Name");
+
+        if (textSource is null)
+            return false;
+
+        var resolvedName = ExtractText(textSource);
+        if (string.IsNullOrWhiteSpace(resolvedName))
+            return false;
+
+        rowId = id;
+        name = resolvedName;
+        return true;
+    }
+
+    private static object? GetPropertyValue(object target, string propertyName)
+    {
+        var prop = target.GetType().GetProperty(propertyName);
+        return prop?.GetValue(target);
+    }
+
+    private static bool? GetBoolProperty(object target, string propertyName)
+    {
+        var value = GetPropertyValue(target, propertyName);
+        return value is bool b ? b : null;
+    }
+
+    private static uint GetUIntProperty(object target, string propertyName)
+    {
+        var value = GetPropertyValue(target, propertyName);
+        return value switch
+        {
+            uint u => u,
+            int i when i >= 0 => (uint)i,
+            _ => 0,
+        };
+    }
+
+    private static string ExtractText(object textLike)
+    {
+        if (textLike is string s)
+            return s;
+
+        var extractText = textLike.GetType().GetMethod("ExtractText", Type.EmptyTypes);
+        if (extractText is not null && extractText.ReturnType == typeof(string))
+        {
+            var result = extractText.Invoke(textLike, null);
+            return result as string ?? string.Empty;
+        }
+
+        return textLike.ToString() ?? string.Empty;
     }
 }
 
