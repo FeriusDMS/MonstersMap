@@ -1,16 +1,3 @@
-// ╔══════════════════════════════════════════════════════════════════════════╗
-// ║  MonstersMap.cs — version corrigée                                      ║
-// ║                                                                          ║
-// ║  Corrections majeures :                                                  ║
-// ║  1. Lecture correcte du sheet Level via l'API typée Lumina               ║
-// ║     (plus de réflexion fragile)                                          ║
-// ║  2. Résolution du BNpcName via RowRef<BNpcName>.Value.Singular           ║
-// ║  3. Langue du client passée à GetExcelSheet<T>(dataManager.Language)     ║
-// ║     → noms localisés (FR / EN / DE / JP)                                ║
-// ║  4. Filtre Type == 9 pour ne garder que les BattleNpc (monstres)         ║
-// ║  5. Flag placé via GameGui.OpenMapWithMapLink + vraie formule de conv.   ║
-// ╚══════════════════════════════════════════════════════════════════════════╝
-
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Dalamud.Interface.Windowing;
@@ -27,10 +14,6 @@ using System.Numerics;
 using Lumina.Excel.Sheets;
 
 namespace MonstersMap;
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Plugin entry point
-// ─────────────────────────────────────────────────────────────────────────────
 
 public class Plugin : IDalamudPlugin
 {
@@ -83,10 +66,6 @@ public class Plugin : IDalamudPlugin
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Data record
-// ─────────────────────────────────────────────────────────────────────────────
-
 public sealed record MonsterLocationResult(
     string Name,
     Vector3 Position,
@@ -94,21 +73,12 @@ public sealed record MonsterLocationResult(
     string TerritoryName,
     uint MapId);
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Monster discovery — lecture correcte des sheets Lumina
-// ─────────────────────────────────────────────────────────────────────────────
-
 internal static class MonsterDiscovery
 {
     private static string? _cachedLang;
     private static List<MonsterLocationResult>? _globalCache;
     private static readonly object Lock = new();
 
-    /// <summary>
-    /// Retourne tous les monstres dont le nom contient <paramref name="query"/>
-    /// (insensible à la casse), en fusionnant les données statiques (Level sheet)
-    /// et les monstres actuellement spawné dans la zone du joueur.
-    /// </summary>
     public static IReadOnlyList<MonsterLocationResult> Search(
         IDataManager dataManager,
         IObjectTable objectTable,
@@ -118,13 +88,10 @@ internal static class MonsterDiscovery
         if (string.IsNullOrWhiteSpace(query))
             return Array.Empty<MonsterLocationResult>();
 
-        // 1. Monstres spawné en live (position exacte, temps réel)
         var live = GetLiveMonsters(objectTable, dataManager, currentTerritoryType);
 
-        // 2. Base globale depuis les sheets de données du jeu
         var global = GetGlobalCache(dataManager);
 
-        // 3. Fusion + filtre par nom
         var needle = query.Trim();
         return live
             .Concat(global)
@@ -134,15 +101,12 @@ internal static class MonsterDiscovery
             .ToList();
     }
 
-    // ── Cache global ─────────────────────────────────────────────────────────
-
     private static List<MonsterLocationResult> GetGlobalCache(IDataManager dataManager)
     {
         lock (Lock)
         {
             var currentLanguage = dataManager.Language.ToString();
 
-            // Invalide si la langue du client a changé (changement de langue en cours de jeu)
             if (_globalCache is not null && _cachedLang == currentLanguage)
                 return _globalCache;
 
@@ -152,31 +116,21 @@ internal static class MonsterDiscovery
         }
     }
 
-    /// <summary>
-    /// Parcourt le sheet <c>Level</c> de Lumina pour extraire tous les BattleNpc
-    /// (Type == 9) avec leur nom localisé, position et territoire.
-    ///
-    /// Pourquoi ça ne fonctionnait pas avant :
-    ///  - L'ancien code utilisait la réflexion (GetPropertyValue / ExtractDisplayText)
-    ///    pour tenter de lire "BNpcName", "Name", etc. sur le row. Or dans l'API
-    ///    Lumina moderne, BNpcName est un <c>RowRef&lt;BNpcName&gt;</c> : une référence
-    ///    paresseuse vers une autre sheet. La réflexion retournait l'objet RowRef brut,
-    ///    jamais le texte réel — d'où 0 résultat.
-    ///  - L'ancien code utilisait <c>dataManager.GameData.GetExcelSheet&lt;Level&gt;()</c>
-    ///    sans langue → noms en japonais ou vides selon la config Lumina.
-    ///  - Aucun filtre sur Type → on parcourait tout l'univers (décors, objets…).
-    /// </summary>
     private static List<MonsterLocationResult> BuildGlobalCache(IDataManager dataManager)
     {
         Plugin.Log.Information($"[MonstersMap] Building global cache (language={dataManager.Language})…");
 
-        // ✅ Utiliser dataManager.GetExcelSheet<T>(language) et non dataManager.GameData.GetExcelSheet<T>()
-        //    La version Dalamud (IDataManager) gère correctement la langue et le contexte du plugin.
         var levelSheet = dataManager.GetExcelSheet<Level>(dataManager.Language);
-
         if (levelSheet is null)
         {
             Plugin.Log.Error("[MonstersMap] Level sheet could not be loaded!");
+            return new List<MonsterLocationResult>();
+        }
+
+        var bNpcNameSheet = dataManager.GetExcelSheet<BNpcName>(dataManager.Language);
+        if (bNpcNameSheet is null)
+        {
+            Plugin.Log.Error("[MonstersMap] BNpcName sheet could not be loaded!");
             return new List<MonsterLocationResult>();
         }
 
@@ -185,16 +139,20 @@ internal static class MonsterDiscovery
 
         foreach (var row in levelSheet)
         {
-            // ✅ Filtre : Type == 9 = BattleNpc uniquement
-            //    Type 8 = EventNpc (marchands, PNJ de quête…)
-            //    Sans ce filtre on récupère des milliers d'objets de décor sans nom.
             if (row.Type != 9)
                 continue;
 
-            if (!TryResolveBattleNpcName(row, out var bNpcNameId, out var name))
+            uint bNpcNameId = row.Object.RowId;
+            if (bNpcNameId == 0)
                 continue;
 
-            // Territoire
+            if (!bNpcNameSheet.TryGetRow(bNpcNameId, out var bNpcName))
+                continue;
+
+            var name = bNpcName.Singular.ExtractText();
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
             if (!row.Territory.IsValid)
                 continue;
 
@@ -203,13 +161,10 @@ internal static class MonsterDiscovery
             if (territoryId == 0)
                 continue;
 
-            // Dédoublonnage par (BNpcNameId, TerritoryId) pour avoir un seul résultat
-            // par type de monstre par zone (pas besoin de lister 50× le même gobelin)
             var key = (bNpcNameId, territoryId);
             if (!seen.Add(key))
                 continue;
 
-            // Nom de la zone
             string territoryName = "Unknown";
             if (terrRow.PlaceName.IsValid)
             {
@@ -218,20 +173,14 @@ internal static class MonsterDiscovery
                     territoryName = n;
             }
 
-            // Map ID (nécessaire pour OpenMapWithMapLink)
             uint mapId = terrRow.Map.IsValid ? terrRow.Map.Value.RowId : 0;
-
-            // Position monde
             var position = new Vector3(row.X, row.Y, row.Z);
-
             results.Add(new MonsterLocationResult(name, position, territoryId, territoryName, mapId));
         }
 
         Plugin.Log.Information($"[MonstersMap] Global cache: {results.Count} unique entries.");
         return results;
     }
-
-    // ── Monstres en vie dans la zone actuelle ────────────────────────────────
 
     private static IEnumerable<MonsterLocationResult> GetLiveMonsters(
         IObjectTable objectTable,
@@ -250,8 +199,6 @@ internal static class MonsterDiscovery
             })
             .Where(r => !string.IsNullOrWhiteSpace(r.Name));
     }
-
-    // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static string ResolveTerritoryName(IDataManager dataManager, uint territoryId)
     {
@@ -277,33 +224,7 @@ internal static class MonsterDiscovery
 
         return row.Map.IsValid ? row.Map.Value.RowId : 0;
     }
-
-    private static bool TryResolveBattleNpcName(Level row, out uint bNpcNameId, out string name)
-    {
-        bNpcNameId = 0;
-        name = string.Empty;
-
-        // Level.BNpcBase → BNpcBase.BNpcName → BNpcName.Singular
-        if (!row.BNpcBase.IsValid)
-            return false;
-
-        var bNpcBase = row.BNpcBase.Value;
-
-        if (!bNpcBase.BNpcName.IsValid)
-            return false;
-
-        bNpcNameId = bNpcBase.BNpcName.RowId;
-        if (bNpcNameId == 0)
-            return false;
-
-        name = bNpcBase.BNpcName.Value.Singular.ExtractText();
-        return !string.IsNullOrWhiteSpace(name);
-    }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  UI — fenêtre ImGui
-// ─────────────────────────────────────────────────────────────────────────────
 
 public class MonstersMapWindow : Window
 {
@@ -333,7 +254,6 @@ public class MonstersMapWindow : Window
         ImGui.Separator();
         ImGui.Spacing();
 
-        // ── Résultats ──────────────────────────────────────────────────────
         if (_results.Count > 0)
         {
             ImGui.Text($"Found {_results.Count} result(s) matching '{_lastQuery}':");
@@ -382,8 +302,6 @@ public class MonstersMapWindow : Window
         }
     }
 
-    // ── Search ───────────────────────────────────────────────────────────────
-
     private void Search()
     {
         _results.Clear();
@@ -415,16 +333,6 @@ public class MonstersMapWindow : Window
         }
     }
 
-    // ── Flag ─────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Ouvre la carte et place un marqueur via l'API officielle Dalamud
-    /// <see cref="IGameGui.OpenMapWithMapLink"/>.
-    ///
-    /// MapLinkPayload attend des coordonnées carte (typ. 1–42), pas des
-    /// coordonnées monde. On utilise la formule reverse-engineered par la
-    /// communauté FFXIV (SizeFactor + Offset du sheet Map).
-    /// </summary>
     private void PlaceFlag(MonsterLocationResult m)
     {
         try
@@ -442,7 +350,6 @@ public class MonstersMapWindow : Window
                 $"[MonstersMap] Flag → {m.Name} | territory={m.TerritoryType} map={m.MapId} " +
                 $"| world({m.Position.X:F1},{m.Position.Z:F1}) → map({mapX:F2},{mapY:F2})");
 
-            // ✅ OpenMapWithMapLink ouvre la carte au bon endroit et place le flag
             Plugin.GameGui.OpenMapWithMapLink(new MapLinkPayload(
                 m.TerritoryType,
                 m.MapId,
@@ -457,17 +364,6 @@ public class MonstersMapWindow : Window
             _status = $"Flag error: {ex.Message}";
         }
     }
-
-    /// <summary>
-    /// Convertit les coordonnées monde FFXIV en coordonnées carte affichées
-    /// dans l'UI du jeu.
-    ///
-    /// Formule standard (reverse-engineered) :
-    ///   mapCoord = ((worldCoord + offset) * 0.02 * sizeFactor) / 100 + 1
-    ///
-    /// SizeFactor et Offset viennent du sheet <c>Map</c> de Lumina.
-    /// L'axe Z du monde correspond à l'axe Y de la carte.
-    /// </summary>
     private static (float X, float Y) WorldToMapCoords(Vector3 worldPos, uint mapId)
     {
         var mapSheet = Plugin.DataManager.GetExcelSheet<Map>();
@@ -485,11 +381,8 @@ public class MonstersMapWindow : Window
             }
         }
 
-        // Fallback grossier si Map sheet inaccessible
         return (worldPos.X / 50f + 21f, worldPos.Z / 50f + 21f);
     }
-
-    // ── Helpers ──────────────────────────────────────────────────────────────
 
     private string MakeLabel(MonsterLocationResult m, int idx)
     {
