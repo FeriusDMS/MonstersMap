@@ -4,7 +4,7 @@
   "Punchline": "Search and locate monsters on the map with ease.",
   "Description": "Find any monster in Eorzea! Enter a monster name and get instantly flagged on the map with a minimap icon showing the location. Perfect for hunts, gathering, or exploration.",
   "RepoUrl": "https://github.com/FeriusDMS/MonstersMap",
-  "Changelog": "-0.1.2\n  Fix issue where the mod wasn't able to find any monsters",
+  "Changelog": "-0.1.3\n  Fixed monster search returning no results: correctly resolve BNpcName via parallel sheet lookup (Level.Object.RowId)\n  Fixed search results including city NPCs, dungeon mobs, and instanced content: results are now filtered to overworld field zones only\n  Fixed incorrect map flag placement: corrected world-to-map coordinate conversion formula\n  Results now display in-game map coordinates (X / Y) instead of raw world coordinates\n-0.1.2\n  Fix issue where the mod wasn't able to find any monsters",
   "Tags": [
     "Map",
     "Utility",
