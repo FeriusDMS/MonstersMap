@@ -161,6 +161,10 @@ internal static class MonsterDiscovery
             if (territoryId == 0)
                 continue;
 
+            // Overworld zones only
+            if (terrRow.TerritoryIntendedUse.RowId != 1)
+                continue;
+
             var key = (bNpcNameId, territoryId);
             if (!seen.Add(key))
                 continue;
@@ -275,8 +279,10 @@ public class MonstersMapWindow : Window
             {
                 var sel = _results[_selected];
                 ImGui.TextWrapped($"Name: {sel.Name}");
-                ImGui.Text($"Zone: {sel.TerritoryName}  (id={sel.TerritoryType})");
-                ImGui.Text($"Position: X={sel.Position.X:F1}  Y={sel.Position.Y:F1}  Z={sel.Position.Z:F1}");
+                ImGui.Text($"Zone: {sel.TerritoryName}");
+                var (mx, my) = sel.MapId > 0 ? WorldToMapCoords(sel.Position, sel.MapId) : (0f, 0f);
+                if (mx > 0)
+                    ImGui.Text($"Map: X={mx:F1}  Y={my:F1}");
                 ImGui.Spacing();
 
                 if (ImGui.Button("Flag on Map##flag", new Vector2(160, 0)))
@@ -364,19 +370,20 @@ public class MonstersMapWindow : Window
             _status = $"Flag error: {ex.Message}";
         }
     }
+
     private static (float X, float Y) WorldToMapCoords(Vector3 worldPos, uint mapId)
     {
         var mapSheet = Plugin.DataManager.GetExcelSheet<Map>();
         if (mapSheet is not null && mapSheet.TryGetRow(mapId, out var mapRow))
         {
-            var sf = mapRow.SizeFactor;
-            var ox = mapRow.OffsetX;
-            var oy = mapRow.OffsetY;
+            float sf = mapRow.SizeFactor;
+            float ox = mapRow.OffsetX;
+            float oy = mapRow.OffsetY;
 
             if (sf > 0)
             {
-                float x = ((worldPos.X + ox) * 0.02f * sf) / 100f + 1f;
-                float y = ((worldPos.Z + oy) * 0.02f * sf) / 100f + 1f;
+                float x = (worldPos.X + ox) * 0.02f + 2048f / sf + 1f;
+                float y = (worldPos.Z + oy) * 0.02f + 2048f / sf + 1f;
                 return (x, y);
             }
         }
